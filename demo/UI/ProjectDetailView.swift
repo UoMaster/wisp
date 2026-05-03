@@ -6,17 +6,18 @@
 import SwiftUI
 
 struct ProjectDetailView: View {
-    let projectID: UUID
+    let project: Project
 
     var body: some View {
         HStack(spacing: 0) {
-            TodoPanel()
-                .frame(minWidth: 250, idealWidth: 300)
+            TodoPanel(project: project)
+                .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
 
-            Divider()
+            WispDivider(axis: .vertical)
 
             TerminalPanel()
-                .frame(minWidth: 400)
+                .frame(minWidth: 480)
         }
+        .background(Theme.bgWindow)
     }
 }

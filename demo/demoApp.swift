@@ -9,9 +9,11 @@ import SwiftUI
 struct WispApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainWindow()
+                .frame(minWidth: 900, minHeight: 600)
         }
-        .defaultSize(width: 1200, height: 800)
-        .windowResizability(.contentSize)
+        .defaultSize(width: 1280, height: 820)
+        .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
     }
 }

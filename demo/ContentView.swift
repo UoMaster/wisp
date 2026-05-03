@@ -2,11 +2,5 @@
 //  ContentView.swift
 //  Wisp
 //
-
-import SwiftUI
-
-struct ContentView: View {
-    var body: some View {
-        MainWindow()
-    }
-}
+//  (已废弃:MainWindow 直接作为根视图使用)
+//

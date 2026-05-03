@@ -23,4 +23,13 @@ struct Project: Identifiable, Codable, Equatable {
     var url: URL {
         URL(fileURLWithPath: path)
     }
+
+    /// 用于 UI 显示的缩短路径,把 home 目录替换为 ~
+    var displayPath: String {
+        let home = NSHomeDirectory()
+        if path.hasPrefix(home) {
+            return "~" + path.dropFirst(home.count)
+        }
+        return path
+    }
 }
