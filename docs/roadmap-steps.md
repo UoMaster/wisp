@@ -74,14 +74,14 @@
   - 每个项目的 To-Do 列表跟随项目一起保存
   - 方案：与 Project 列表存同一 JSON，通过 `PersistedData` / `TodoEntry` 结构序列化
 
-- [ ] **点击 To-Do 启动 CLI 完整流程**
+- [x] **点击 To-Do 启动 CLI 完整流程**
   - 弹出 CLI 选择浮层（Claude Code / OpenCode / Codex）
   - 把 prompt 写入临时文件 `/tmp/wisp/<uuid>.prompt`
   - 通过 CLIAdapter 生成启动命令
   - 在 TerminalPanel 中执行（cwd = 项目目录）
   - 更新 Todo 状态为 running，完成后自动标记 completed
 
-- [ ] **终端与项目目录关联**
+- [x] **终端与项目目录关联**
   - TerminalPanel 启动 shell 时使用项目路径作为 cwd
   - 当前 `startShell()` 写死为 `homeDirectoryForCurrentUser`
 

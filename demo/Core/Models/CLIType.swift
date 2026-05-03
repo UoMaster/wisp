@@ -23,14 +23,15 @@ enum CLIType: String, Codable, CaseIterable, Identifiable, Equatable {
 
 protocol CLIAdapter {
     var cliType: CLIType { get }
-    func startCommand(promptFile: URL) -> [String]
+    /// 返回可直接写入运行中 shell 的命令字符串
+    func shellCommand(promptFile: URL) -> String
 }
 
 struct GenericCLIAdapter: CLIAdapter {
     let cliType: CLIType
 
-    func startCommand(promptFile: URL) -> [String] {
-        ["bash", "-c", "\(cliType.rawValue) \"$(cat \(promptFile.path))\""]
+    func shellCommand(promptFile: URL) -> String {
+        "\(cliType.rawValue) \"$(cat \(promptFile.path))\""
     }
 }
 

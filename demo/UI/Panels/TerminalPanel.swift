@@ -21,8 +21,14 @@ struct TerminalPanel: View {
 
     @State private var ptySession: PTYSession?
     @State private var sessionTitle: String = "shell"
+    @State private var isRunningCommand = false
+    @State private var pendingCommand: String?
 
-    private static let shellPath = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+    private static let shellPath: String = {
+        let uid = getuid()
+        guard let pw = getpwuid(uid) else { return "/bin/zsh" }
+        return String(cString: pw.pointee.pw_shell)
+    }()
     private static let shellName = URL(fileURLWithPath: shellPath).lastPathComponent
 
     var body: some View {
@@ -41,15 +47,16 @@ struct TerminalPanel: View {
             ptySession?.terminate()
             ptySession = nil
         }
+        .onReceive(NotificationCenter.default.publisher(for: .runCLICommand)) { notification in
+            handleRunCommand(notification: notification)
+        }
     }
 
     // MARK: - Header
 
     private var header: some View {
         HStack(spacing: Space.sm) {
-            Circle()
-                .fill(Theme.statusSuccess)
-                .frame(width: 6, height: 6)
+            StatusDot(status: isRunningCommand ? .running : .completed, size: 6)
 
             Text(sessionTitle)
                 .font(WispFont.panelTitle)
@@ -117,18 +124,40 @@ struct TerminalPanel: View {
             newSession.receive(data)
         }
 
-        pty.onExit = { code in
+        pty.onExit = { [project] code in
             newSession.finish(exitCode: UInt32(code), runtimeMilliseconds: 0)
+            if let todoID = pty.associatedTodoID {
+                NotificationCenter.default.post(
+                    name: .cliCommandFinished,
+                    object: nil,
+                    userInfo: [
+                        NotificationKey.projectID: project.id,
+                        NotificationKey.todoID: todoID,
+                        NotificationKey.exitCode: code
+                    ]
+                )
+            }
+            DispatchQueue.main.async {
+                self.isRunningCommand = false
+                self.sessionTitle = project.name
+            }
         }
 
         let started = pty.start(
             command: Self.shellPath,
             arguments: ["-i", "-l"],
             cwd: project.url,
-            postLaunchCommand: "cd \(project.path)"
+            postLaunchCommand: "cd '\(project.path)'"
         )
 
         sessionTitle = started ? project.name : "failed"
+
+        if started, let pending = pendingCommand {
+            pendingCommand = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                ptySession?.writeLine(pending)
+            }
+        }
     }
 
     private func focusTerminalView() {
@@ -147,6 +176,35 @@ struct TerminalPanel: View {
             window.makeFirstResponder(terminalView)
         }
     }
+
+    // MARK: - Command Execution
+
+    private func handleRunCommand(notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let projectID = userInfo[NotificationKey.projectID] as? UUID,
+              projectID == project.id,
+              let command = userInfo[NotificationKey.command] as? String else { return }
+
+        if let title = userInfo[NotificationKey.title] as? String {
+            sessionTitle = title
+        }
+        if let todoID = userInfo[NotificationKey.todoID] as? UUID {
+            ptySession?.associatedTodoID = todoID
+        }
+        isRunningCommand = true
+
+        if let pty = ptySession {
+            pty.writeLine(command)
+
+            if let promptInput = userInfo[NotificationKey.promptInput] as? String {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    pty.writeLine(promptInput)
+                }
+            }
+        } else {
+            pendingCommand = command
+        }
+    }
 }
 
 // MARK: - PTY Session
@@ -159,6 +217,7 @@ final class PTYSession {
 
     var onData: ((Data) -> Void)?
     var onExit: ((Int32) -> Void)?
+    var associatedTodoID: UUID?
 
     func start(
         command: String,
@@ -184,6 +243,9 @@ final class PTYSession {
         var env = ProcessInfo.processInfo.environment
         env["TERM"] = "xterm-256color"
         env["CLICOLOR"] = "1"
+        if env["LANG"] == nil {
+            env["LANG"] = "en_US.UTF-8"
+        }
         task.environment = env
 
         let slaveHandle = FileHandle(fileDescriptor: slave)
@@ -214,7 +276,7 @@ final class PTYSession {
 
             if let postLaunchCommand {
                 let workItem = DispatchWorkItem { [weak self] in
-                    self?.write(Data("\(postLaunchCommand)\n".utf8))
+                    self?.writeLine(postLaunchCommand)
                 }
                 self.postLaunchWorkItem = workItem
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
@@ -232,6 +294,10 @@ final class PTYSession {
 
     func write(_ data: Data) {
         masterHandle?.write(data)
+    }
+
+    func writeLine(_ string: String) {
+        write(Data(string.utf8) + Data([0x0A]))
     }
 
     func resize(columns: Int32, rows: Int32) {

@@ -10,6 +10,8 @@ struct TodoPanel: View {
     let project: Project
 
     @State private var showingAddSheet = false
+    @State private var selectedTodoForRun: Todo?
+    @State private var showingCLIChooser = false
 
     private var todoList: [Todo] {
         store.todos(for: project.id)
@@ -23,6 +25,25 @@ struct TodoPanel: View {
         .background(Theme.bgSurface)
         .sheet(isPresented: $showingAddSheet) {
             AddTodoSheet(store: store, projectID: project.id)
+        }
+        .confirmationDialog(
+            "选择 CLI 工具",
+            isPresented: $showingCLIChooser,
+            titleVisibility: .visible
+        ) {
+            ForEach(CLIType.allCases) { cliType in
+                Button(cliType.displayName) {
+                    executeRun(cliType: cliType)
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            if let todo = selectedTodoForRun {
+                Text("「\(todo.title)」")
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cliCommandFinished)) { notification in
+            handleCommandFinished(notification: notification)
         }
     }
 
@@ -101,8 +122,80 @@ struct TodoPanel: View {
     // MARK: - Actions
 
     private func runTodo(_ todo: Todo) {
-        // TODO: 弹 CLI 选择浮层 + 在终端面板里启动
-        print("Run todo in \(project.name): \(todo.title)")
+        guard todo.status != .running else { return }
+        selectedTodoForRun = todo
+        showingCLIChooser = true
+    }
+
+    private func executeRun(cliType: CLIType) {
+        guard let todo = selectedTodoForRun else { return }
+        selectedTodoForRun = nil
+
+        // 写入临时文件
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("wisp")
+        do {
+            try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            let promptFile = tmpDir.appendingPathComponent("\(todo.id.uuidString).prompt")
+            try todo.prompt.write(to: promptFile, atomically: true, encoding: .utf8)
+        } catch {
+            print("Failed to write prompt file: \(error)")
+            return
+        }
+
+        // 生成 CLI 命令
+        let command: String
+        let promptInput: String?
+        switch cliType {
+        case .openCode:
+            command = cliType.rawValue
+            promptInput = todo.prompt.isEmpty ? nil : todo.prompt
+        default:
+            let promptFile = tmpDir.appendingPathComponent("\(todo.id.uuidString).prompt")
+            let adapter = cliType.adapter()
+            command = adapter.shellCommand(promptFile: promptFile)
+            promptInput = nil
+        }
+
+        guard !command.isEmpty else { return }
+
+        // 3. 更新 Todo 状态为 running
+        var runningTodo = todo
+        runningTodo.status = .running
+        store.updateTodo(runningTodo, in: project.id)
+
+        // 4. 发送通知让 TerminalPanel 执行
+        var userInfo: [String: Any] = [
+            NotificationKey.projectID: project.id,
+            NotificationKey.command: command,
+            NotificationKey.title: todo.title,
+            NotificationKey.todoID: todo.id
+        ]
+        if let promptInput {
+            userInfo[NotificationKey.promptInput] = promptInput
+        }
+        NotificationCenter.default.post(
+            name: .runCLICommand,
+            object: nil,
+            userInfo: userInfo
+        )
+    }
+
+    private func handleCommandFinished(notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let projectID = userInfo[NotificationKey.projectID] as? UUID,
+              projectID == project.id,
+              let todoID = userInfo[NotificationKey.todoID] as? UUID else { return }
+
+        guard var todo = store.todos(for: project.id).first(where: { $0.id == todoID }) else { return }
+        guard todo.status != .completed else { return }
+        todo.status = .completed
+        store.updateTodo(todo, in: project.id)
+
+        // 清理临时文件
+        let promptFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wisp")
+            .appendingPathComponent("\(todoID.uuidString).prompt")
+        try? FileManager.default.removeItem(at: promptFile)
     }
 }
 
