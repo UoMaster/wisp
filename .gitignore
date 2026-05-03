@@ -34,3 +34,8 @@ build/
 
 # Wisp runtime
 tmp/
+
+# Claude Code
+.claude/
+.agents/
+skills-lock.json
