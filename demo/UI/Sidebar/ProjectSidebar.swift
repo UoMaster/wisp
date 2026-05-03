@@ -4,9 +4,11 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct ProjectSidebar: View {
-    @ObservedObject var store: DataStore
+    @ObservedObject var projectStore: ProjectStore
+    let todoStore: TodoStore
     @Binding var selectedProjectID: UUID?
 
     var body: some View {
@@ -54,10 +56,10 @@ struct ProjectSidebar: View {
                     .padding(.top, Space.xs)
                     .padding(.bottom, Space.xs)
 
-                if store.projects.isEmpty {
+                if projectStore.projects.isEmpty {
                     emptyHint
                 } else {
-                    ForEach(store.projects) { project in
+                    ForEach(projectStore.projects) { project in
                         ProjectRow(
                             project: project,
                             isSelected: selectedProjectID == project.id
@@ -65,9 +67,10 @@ struct ProjectSidebar: View {
                         .onTapGesture { selectedProjectID = project.id }
                         .contextMenu {
                             Button("从列表移除", role: .destructive) {
-                                store.removeProject(id: project.id)
+                                projectStore.remove(id: project.id)
+                                todoStore.removeAll(for: project.id)
                                 if selectedProjectID == project.id {
-                                    selectedProjectID = store.projects.first?.id
+                                    selectedProjectID = projectStore.projects.first?.id
                                 }
                             }
                         }
@@ -119,46 +122,8 @@ struct ProjectSidebar: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             let newProject = Project(path: url.path)
-            store.addProject(newProject)
+            projectStore.add(newProject)
             selectedProjectID = newProject.id
         }
-    }
-}
-
-// MARK: - Project Row
-
-private struct ProjectRow: View {
-    let project: Project
-    let isSelected: Bool
-    @State private var isHovered = false
-
-    var body: some View {
-        HStack(spacing: Space.sm) {
-            Image(systemName: "folder.fill")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(isSelected ? Theme.accent : Theme.textTertiary)
-                .frame(width: 16)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(project.name)
-                    .font(WispFont.bodyMedium)
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1)
-
-                Text(project.displayPath)
-                    .font(WispFont.monoSmall)
-                    .foregroundStyle(Theme.textTertiary)
-                    .lineLimit(1)
-                    .truncationMode(.head)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, Space.sm)
-        .padding(.vertical, Space.xs)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .wispRowBackground(isSelected: isSelected, isHovered: isHovered)
-        .contentShape(Rectangle())
-        .trackHover($isHovered)
     }
 }

@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import SwiftUI
 
 struct Todo: Identifiable, Codable, Equatable {
     let id: UUID
@@ -53,6 +52,8 @@ struct Todo: Identifiable, Codable, Equatable {
 
     var isFailed: Bool { status == .failed }
 
+    // MARK: - Mutations
+
     mutating func markRunning() {
         status = .running
         updatedAt = Date()
@@ -83,76 +84,5 @@ struct Todo: Identifiable, Codable, Equatable {
             exitCode: exitCode
         )
         runHistory.append(record)
-    }
-}
-
-// MARK: - Status
-
-enum TodoStatus: String, Codable, Equatable {
-    case pending
-    case running
-    case completed
-    case failed
-}
-
-// MARK: - Priority
-
-enum TodoPriority: String, Codable, CaseIterable, Equatable {
-    case none = "none"
-    case low = "low"
-    case medium = "medium"
-    case high = "high"
-
-    var displayName: String {
-        switch self {
-        case .none:   return "无"
-        case .low:    return "低"
-        case .medium: return "中"
-        case .high:   return "高"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .none:   return Theme.textTertiary
-        case .low:    return Color(red: 0.35, green: 0.55, blue: 0.95)
-        case .medium: return Color(red: 0.95, green: 0.60, blue: 0.25)
-        case .high:   return Color(red: 0.95, green: 0.35, blue: 0.35)
-        }
-    }
-
-    var sortOrder: Int {
-        switch self {
-        case .high:   return 0
-        case .medium: return 1
-        case .low:    return 2
-        case .none:   return 3
-        }
-    }
-}
-
-// MARK: - Run Record
-
-struct RunRecord: Identifiable, Codable, Equatable {
-    let id: UUID
-    let cliType: CLIType
-    let startedAt: Date
-    let endedAt: Date
-    let exitCode: Int32
-
-    init(cliType: CLIType, startedAt: Date, endedAt: Date, exitCode: Int32) {
-        self.id = UUID()
-        self.cliType = cliType
-        self.startedAt = startedAt
-        self.endedAt = endedAt
-        self.exitCode = exitCode
-    }
-
-    var duration: TimeInterval {
-        endedAt.timeIntervalSince(startedAt)
-    }
-
-    var isSuccess: Bool {
-        exitCode == 0
     }
 }

@@ -6,18 +6,23 @@
 import SwiftUI
 
 struct MainWindow: View {
-    @StateObject private var store = DataStore()
+    @ObservedObject var projectStore: ProjectStore
+    @ObservedObject var todoStore: TodoStore
+    let cliRunner: CLIRunner
+    let bus: PanelEventBus
+
     @State private var selectedProjectID: UUID?
 
     @State private var editorPresented = false
-    @State private var editorMode: TodoEditorDrawer.Mode = .create
     @State private var editorProjectID: UUID?
+    @State private var editorTodoID: UUID?
 
     var body: some View {
         ZStack {
             NavigationSplitView {
                 ProjectSidebar(
-                    store: store,
+                    projectStore: projectStore,
+                    todoStore: todoStore,
                     selectedProjectID: $selectedProjectID
                 )
                 .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 340)
@@ -38,22 +43,37 @@ struct MainWindow: View {
                 editorOverlay(projectID: projectID)
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .presentTodoEditor)) { notification in
-            handlePresentEditor(notification: notification)
+        .onReceive(bus.events) { event in
+            guard case let .presentTodoEditor(projectID, todoID) = event else { return }
+            editorProjectID = projectID
+            editorTodoID = todoID
+            withAnimation(.easeOut(duration: Motion.base)) {
+                editorPresented = true
+            }
         }
     }
 
     @ViewBuilder
     private var detailContent: some View {
-        if let project = store.projects.first(where: { $0.id == selectedProjectID }) {
-            ProjectDetailView(store: store, project: project)
+        if let project = projectStore.projects.first(where: { $0.id == selectedProjectID }) {
+            ProjectDetailView(
+                todoStore: todoStore,
+                cliRunner: cliRunner,
+                bus: bus,
+                project: project
+            )
         } else {
             EmptyProjectState()
         }
     }
 
     private func editorOverlay(projectID: UUID) -> some View {
-        HStack(spacing: 0) {
+        let editingTodo: Todo? = {
+            guard let id = editorTodoID else { return nil }
+            return todoStore.todo(id: id, in: projectID)
+        }()
+
+        return HStack(spacing: 0) {
             Color.black.opacity(0.15)
                 .ignoresSafeArea()
                 .onTapGesture {
@@ -64,9 +84,9 @@ struct MainWindow: View {
                 .transition(.opacity)
 
             TodoEditorDrawer(
-                store: store,
+                todoStore: todoStore,
                 projectID: projectID,
-                mode: editorMode,
+                editingTodo: editingTodo,
                 isPresented: Binding(
                     get: { editorPresented },
                     set: { editorPresented = $0 }
@@ -89,53 +109,5 @@ struct MainWindow: View {
         }
         .ignoresSafeArea()
         .zIndex(1000)
-    }
-
-    private func handlePresentEditor(notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let projectID = userInfo[NotificationKey.projectID] as? UUID else { return }
-
-        if let mode = userInfo[NotificationKey.editorMode] as? TodoEditorDrawer.Mode {
-            self.editorMode = mode
-        } else {
-            self.editorMode = .create
-        }
-        self.editorProjectID = projectID
-        withAnimation(.easeOut(duration: Motion.base)) {
-            self.editorPresented = true
-        }
-    }
-}
-
-// MARK: - Empty State
-
-private struct EmptyProjectState: View {
-    var body: some View {
-        VStack(spacing: Space.md) {
-            ZStack {
-                RoundedRectangle(cornerRadius: Radius.lg, style: .continuous)
-                    .fill(Theme.bgRaised)
-                    .frame(width: 56, height: 56)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Radius.lg, style: .continuous)
-                            .stroke(Theme.borderDefault, lineWidth: Stroke.hairline)
-                    )
-
-                Image(systemName: "sparkles")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(Theme.accent)
-            }
-
-            VStack(spacing: Space.xs) {
-                Text("Wisp")
-                    .font(WispFont.title)
-                    .foregroundStyle(Theme.textPrimary)
-
-                Text("从左侧添加一个项目开始")
-                    .font(WispFont.bodySmall)
-                    .foregroundStyle(Theme.textSecondary)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

@@ -3,15 +3,15 @@
 //  Wisp
 //
 //  底部抽屉式 Todo 编辑器 —— 新建/编辑任务。
+//  受 todoStore 驱动,无业务副作用之外的状态。
 //
 
 import SwiftUI
 
 struct TodoEditorDrawer: View {
-    @ObservedObject var store: DataStore
+    @ObservedObject var todoStore: TodoStore
     let projectID: UUID
-    let mode: Mode
-
+    let editingTodo: Todo?
     @Binding var isPresented: Bool
 
     @State private var title: String = ""
@@ -26,29 +26,9 @@ struct TodoEditorDrawer: View {
     @FocusState private var titleFocused: Bool
     @FocusState private var tagFieldFocused: Bool
 
-    enum Mode: Equatable {
-        case create
-        case edit(Todo)
-
-        var navigationTitle: String {
-            switch self {
-            case .create: return "新建任务"
-            case .edit:   return "编辑任务"
-            }
-        }
-
-        var submitTitle: String {
-            switch self {
-            case .create: return "创建"
-            case .edit:   return "保存"
-            }
-        }
-    }
-
-    private var editingTodo: Todo? {
-        if case .edit(let todo) = mode { return todo }
-        return nil
-    }
+    private var isEditing: Bool { editingTodo != nil }
+    private var navigationTitle: String { isEditing ? "编辑任务" : "新建任务" }
+    private var submitTitle: String { isEditing ? "保存" : "创建" }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -92,9 +72,7 @@ struct TodoEditorDrawer: View {
                 contentAppeared = true
             }
         }
-        .onDisappear {
-            contentAppeared = false
-        }
+        .onDisappear { contentAppeared = false }
     }
 
     // MARK: - Sections
@@ -113,7 +91,7 @@ struct TodoEditorDrawer: View {
 
     private var headerSection: some View {
         HStack {
-            Text(mode.navigationTitle)
+            Text(navigationTitle)
                 .font(WispFont.sectionTitle)
                 .foregroundStyle(Theme.textPrimary)
             Spacer()
@@ -171,9 +149,7 @@ struct TodoEditorDrawer: View {
             FlowLayout(spacing: Space.xs) {
                 ForEach(tags, id: \.self) { tag in
                     TagPill(text: tag) {
-                        withAnimation {
-                            tags.removeAll { $0 == tag }
-                        }
+                        withAnimation { tags.removeAll { $0 == tag } }
                     }
                 }
             }
@@ -206,18 +182,11 @@ struct TodoEditorDrawer: View {
         VStack(alignment: .leading, spacing: Space.xs) {
             FieldLabel("首选 CLI")
             HStack(spacing: Space.xs) {
-                CLIOptionButton(
-                    title: "自动",
-                    isSelected: preferredCLI == nil
-                ) {
+                CLIOptionButton(title: "自动", isSelected: preferredCLI == nil) {
                     preferredCLI = nil
                 }
-
                 ForEach(CLIType.allCases) { cli in
-                    CLIOptionButton(
-                        title: cli.displayName,
-                        isSelected: preferredCLI == cli
-                    ) {
+                    CLIOptionButton(title: cli.displayName, isSelected: preferredCLI == cli) {
                         preferredCLI = cli
                     }
                 }
@@ -253,7 +222,7 @@ struct TodoEditorDrawer: View {
             Spacer()
             Button("取消") { isPresented = false }
                 .buttonStyle(.wispGhost)
-            Button(mode.submitTitle) { submit() }
+            Button(submitTitle) { submit() }
                 .buttonStyle(.wispPrimary)
                 .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
                 .keyboardShortcut(.defaultAction)
@@ -282,9 +251,7 @@ struct TodoEditorDrawer: View {
             .lowercased()
             .replacingOccurrences(of: " ", with: "-")
         guard !trimmed.isEmpty, !tags.contains(trimmed) else { return }
-        withAnimation {
-            tags.append(trimmed)
-        }
+        withAnimation { tags.append(trimmed) }
         newTagText = ""
         tagFieldFocused = true
     }
@@ -293,8 +260,16 @@ struct TodoEditorDrawer: View {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return }
 
-        switch mode {
-        case .create:
+        if var existing = editingTodo {
+            existing.title = trimmedTitle
+            existing.prompt = prompt
+            existing.priority = priority
+            existing.tags = tags
+            existing.preferredCLI = preferredCLI
+            existing.notes = notes
+            existing.updatedAt = Date()
+            todoStore.update(existing, in: projectID)
+        } else {
             let todo = Todo(
                 title: trimmedTitle,
                 prompt: prompt,
@@ -303,48 +278,14 @@ struct TodoEditorDrawer: View {
                 tags: tags,
                 notes: notes
             )
-            store.addTodo(todo, to: projectID)
-
-        case .edit(var todo):
-            todo.title = trimmedTitle
-            todo.prompt = prompt
-            todo.priority = priority
-            todo.tags = tags
-            todo.preferredCLI = preferredCLI
-            todo.notes = notes
-            todo.updatedAt = Date()
-            store.updateTodo(todo, in: projectID)
+            todoStore.add(todo, to: projectID)
         }
 
         isPresented = false
     }
 }
 
-// MARK: - Subviews
-
-struct SelectablePill<Content: View>: View {
-    let isSelected: Bool
-    let action: () -> Void
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        Button(action: action) {
-            content
-                .padding(.horizontal, Space.md)
-                .padding(.vertical, Space.sm)
-                .background(
-                    RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
-                        .fill(isSelected ? Theme.accentSoft : Theme.bgRaised)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
-                        .stroke(isSelected ? Theme.accent : Theme.borderDefault, lineWidth: Stroke.hairline)
-                )
-                .foregroundStyle(isSelected ? Theme.accent : Theme.textSecondary)
-        }
-        .buttonStyle(.plain)
-    }
-}
+// MARK: - Subviews (file-private)
 
 private struct PriorityPill: View {
     let priority: TodoPriority
@@ -355,7 +296,7 @@ private struct PriorityPill: View {
         SelectablePill(isSelected: isSelected, action: action) {
             HStack(spacing: 4) {
                 Circle()
-                    .fill(priority.color)
+                    .fill(PriorityStyle.color(for: priority))
                     .frame(width: 6, height: 6)
                 Text(priority.displayName)
                     .font(WispFont.bodySmall)
@@ -371,171 +312,7 @@ private struct CLIOptionButton: View {
 
     var body: some View {
         SelectablePill(isSelected: isSelected, action: action) {
-            Text(title)
-                .font(WispFont.bodySmall)
+            Text(title).font(WispFont.bodySmall)
         }
-    }
-}
-
-private struct FormTextEditor: View {
-    let label: String
-    @Binding var text: String
-    let font: Font
-    let minHeight: CGFloat
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Space.xs) {
-            FieldLabel(label)
-            TextEditor(text: $text)
-                .font(font)
-                .scrollContentBackground(.hidden)
-                .padding(Space.sm)
-                .frame(minHeight: minHeight)
-                .background(
-                    RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
-                        .fill(Theme.bgRaised)
-                )
-                .wispBordered(radius: Radius.sm)
-        }
-    }
-}
-
-private struct TagPill: View {
-    let text: String
-    let onDelete: () -> Void
-
-    var body: some View {
-        HStack(spacing: 2) {
-            Text(text)
-                .font(WispFont.monoSmall)
-            Button(action: onDelete) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(
-            RoundedRectangle(cornerRadius: Radius.xs, style: .continuous)
-                .fill(Theme.accentSoft)
-        )
-        .foregroundStyle(Theme.accent)
-    }
-}
-
-private struct RunHistoryRow: View {
-    let record: RunRecord
-    let index: Int
-
-    var body: some View {
-        HStack(spacing: Space.sm) {
-            Text("#\(index)")
-                .font(WispFont.monoSmall)
-                .foregroundStyle(Theme.textTertiary)
-                .frame(width: 28, alignment: .leading)
-
-            Image(systemName: record.isSuccess ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .font(.system(size: 10))
-                .foregroundStyle(record.isSuccess ? Theme.statusSuccess : Theme.statusDanger)
-
-            Text(record.cliType.displayName)
-                .font(WispFont.bodySmall)
-                .foregroundStyle(Theme.textSecondary)
-
-            Spacer()
-
-            Text(formatDuration(record.duration))
-                .font(WispFont.monoSmall)
-                .foregroundStyle(Theme.textTertiary)
-
-            Text(record.endedAt, style: .date)
-                .font(WispFont.monoSmall)
-                .foregroundStyle(Theme.textTertiary)
-        }
-        .padding(.horizontal, Space.md)
-        .padding(.vertical, Space.sm)
-    }
-
-    private func formatDuration(_ interval: TimeInterval) -> String {
-        let mins = Int(interval) / 60
-        let secs = Int(interval) % 60
-        if mins > 0 {
-            return "\(mins)m \(secs)s"
-        }
-        return "\(secs)s"
-    }
-}
-
-// MARK: - Flow Layout
-
-private struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    func makeCache(subviews: Subviews) -> FlowResult {
-        FlowResult(in: 0, subviews: subviews, spacing: spacing)
-    }
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout FlowResult) -> CGSize {
-        cache = FlowResult(in: proposal.width ?? 0, subviews: subviews, spacing: spacing)
-        return cache.size
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout FlowResult) {
-        for (index, subview) in subviews.enumerated() {
-            subview.place(at: CGPoint(x: bounds.minX + cache.positions[index].x,
-                                       y: bounds.minY + cache.positions[index].y),
-                          proposal: .unspecified)
-        }
-    }
-
-    struct FlowResult {
-        var size: CGSize = .zero
-        var positions: [CGPoint] = []
-
-        init(in maxWidth: CGFloat, subviews: Subviews, spacing: CGFloat) {
-            var x: CGFloat = 0
-            var y: CGFloat = 0
-            var rowHeight: CGFloat = 0
-
-            for subview in subviews {
-                let size = subview.sizeThatFits(.unspecified)
-                if x + size.width > maxWidth, x > 0 {
-                    x = 0
-                    y += rowHeight + spacing
-                    rowHeight = 0
-                }
-                positions.append(CGPoint(x: x, y: y))
-                rowHeight = max(rowHeight, size.height)
-                x += size.width + spacing
-            }
-
-            self.size = CGSize(width: maxWidth, height: y + rowHeight)
-        }
-    }
-}
-
-private struct FieldLabel: View {
-    let text: String
-    init(_ text: String) { self.text = text }
-
-    var body: some View {
-        Text(text)
-            .sectionTitleStyle()
-    }
-}
-
-// MARK: - Stagger Animation
-
-private extension View {
-    func staggerAppear(index: Int, appeared: Bool) -> some View {
-        self
-            .opacity(appeared ? 1 : 0)
-            .offset(y: appeared ? 0 : 12)
-            .animation(
-                .easeOut(duration: Motion.slow)
-                .delay(Double(index) * 0.04),
-                value: appeared
-            )
     }
 }
