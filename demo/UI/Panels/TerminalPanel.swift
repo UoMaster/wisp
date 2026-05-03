@@ -4,9 +4,13 @@
 //
 
 import SwiftUI
+import AppKit
 import GhosttyTerminal
+import Darwin
 
 struct TerminalPanel: View {
+    let project: Project
+
     @State private var context = TerminalViewState(
         terminalConfiguration: TerminalConfiguration {
             $0.withFontSize(13)
@@ -15,10 +19,7 @@ struct TerminalPanel: View {
         }
     )
 
-    @State private var shellProcess: Process?
-    @State private var inputPipe: Pipe?
-    @State private var stdoutPipe: Pipe?
-    @State private var stderrPipe: Pipe?
+    @State private var ptySession: PTYSession?
     @State private var sessionTitle: String = "shell"
 
     private static let shellPath = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
@@ -30,8 +31,16 @@ struct TerminalPanel: View {
             terminalSurface
         }
         .background(Theme.bgWindow)
-        .onAppear { startShell() }
-        .onDisappear { teardownShell() }
+        .onAppear {
+            startShell()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                focusTerminalView()
+            }
+        }
+        .onDisappear {
+            ptySession?.terminate()
+            ptySession = nil
+        }
     }
 
     // MARK: - Header
@@ -87,20 +96,16 @@ struct TerminalPanel: View {
 
     // MARK: - Shell lifecycle
 
-    private func teardownShell() {
-        stdoutPipe?.fileHandleForReading.readabilityHandler = nil
-        stderrPipe?.fileHandleForReading.readabilityHandler = nil
-        shellProcess?.terminationHandler = nil
-        shellProcess?.terminate()
-    }
-
     private func startShell() {
+        let pty = PTYSession()
+        self.ptySession = pty
+
         let newSession = InMemoryTerminalSession(
-            write: { [inputPipe = self.inputPipe] data in
-                inputPipe?.fileHandleForWriting.write(data)
+            write: { [weak pty] data in
+                pty?.write(data)
             },
-            resize: { viewport in
-                print("Terminal resized: \(viewport)")
+            resize: { [weak pty] viewport in
+                pty?.resize(columns: Int32(viewport.columns), rows: Int32(viewport.rows))
             }
         )
 
@@ -108,43 +113,149 @@ struct TerminalPanel: View {
             backend: .inMemory(newSession)
         )
 
-        let inPipe = Pipe()
-        let outPipe = Pipe()
-        let errPipe = Pipe()
-        self.inputPipe = inPipe
-        self.stdoutPipe = outPipe
-        self.stderrPipe = errPipe
+        pty.onData = { data in
+            newSession.receive(data)
+        }
+
+        pty.onExit = { code in
+            newSession.finish(exitCode: UInt32(code), runtimeMilliseconds: 0)
+        }
+
+        let started = pty.start(
+            command: Self.shellPath,
+            arguments: ["-i", "-l"],
+            cwd: project.url,
+            postLaunchCommand: "cd \(project.path)"
+        )
+
+        sessionTitle = started ? project.name : "failed"
+    }
+
+    private func focusTerminalView() {
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow,
+              let contentView = window.contentView else { return }
+
+        func findTerminalView(in view: NSView) -> NSView? {
+            if view is AppTerminalView { return view }
+            for subview in view.subviews {
+                if let found = findTerminalView(in: subview) { return found }
+            }
+            return nil
+        }
+
+        if let terminalView = findTerminalView(in: contentView) {
+            window.makeFirstResponder(terminalView)
+        }
+    }
+}
+
+// MARK: - PTY Session
+
+final class PTYSession {
+    private var masterFD: Int32 = -1
+    private var shellTask: Process?
+    private var masterHandle: FileHandle?
+    private var postLaunchWorkItem: DispatchWorkItem?
+
+    var onData: ((Data) -> Void)?
+    var onExit: ((Int32) -> Void)?
+
+    func start(
+        command: String,
+        arguments: [String],
+        cwd: URL? = nil,
+        postLaunchCommand: String? = nil
+    ) -> Bool {
+        var master: Int32 = 0
+        var slave: Int32 = 0
+
+        guard openpty(&master, &slave, nil, nil, nil) >= 0 else {
+            print("openpty failed: \(String(cString: strerror(errno)))")
+            return false
+        }
+
+        self.masterFD = master
 
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: Self.shellPath)
-        task.arguments = ["-i", "-l"]
-        task.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        task.executableURL = URL(fileURLWithPath: command)
+        task.arguments = arguments
+        task.currentDirectoryURL = cwd
 
-        task.standardInput = inPipe
-        task.standardOutput = outPipe
-        task.standardError = errPipe
+        var env = ProcessInfo.processInfo.environment
+        env["TERM"] = "xterm-256color"
+        env["CLICOLOR"] = "1"
+        task.environment = env
 
-        let onData: (FileHandle) -> Void = { handle in
+        let slaveHandle = FileHandle(fileDescriptor: slave)
+        task.standardInput = slaveHandle
+        task.standardOutput = slaveHandle
+        task.standardError = slaveHandle
+
+        let masterFileHandle = FileHandle(fileDescriptor: master)
+        self.masterHandle = masterFileHandle
+
+        masterFileHandle.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
-            if !data.isEmpty {
-                newSession.receive(data)
+            guard !data.isEmpty else {
+                self?.masterHandle?.readabilityHandler = nil
+                return
             }
+            self?.onData?(data)
         }
-        outPipe.fileHandleForReading.readabilityHandler = onData
-        errPipe.fileHandleForReading.readabilityHandler = onData
 
-        task.terminationHandler = { process in
-            print("Shell exited with code: \(process.terminationStatus)")
+        task.terminationHandler = { [weak self] process in
+            self?.onExit?(process.terminationStatus)
         }
 
         do {
             try task.run()
-            self.shellProcess = task
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                inPipe.fileHandleForWriting.write(Data("\n".utf8))
+            self.shellTask = task
+            slaveHandle.closeFile()
+
+            if let postLaunchCommand {
+                let workItem = DispatchWorkItem { [weak self] in
+                    self?.write(Data("\(postLaunchCommand)\n".utf8))
+                }
+                self.postLaunchWorkItem = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
             }
+
+            return true
         } catch {
             print("Failed to start shell: \(error)")
+            masterFileHandle.readabilityHandler = nil
+            masterFileHandle.closeFile()
+            slaveHandle.closeFile()
+            return false
+        }
+    }
+
+    func write(_ data: Data) {
+        masterHandle?.write(data)
+    }
+
+    func resize(columns: Int32, rows: Int32) {
+        guard masterFD >= 0 else { return }
+        var winSize = winsize()
+        winSize.ws_col = UInt16(columns)
+        winSize.ws_row = UInt16(rows)
+        _ = ioctl(masterFD, TIOCSWINSZ, &winSize)
+    }
+
+    func terminate() {
+        postLaunchWorkItem?.cancel()
+        postLaunchWorkItem = nil
+
+        masterHandle?.readabilityHandler = nil
+        masterHandle?.closeFile()
+        masterHandle = nil
+
+        shellTask?.terminate()
+        shellTask = nil
+
+        if masterFD >= 0 {
+            close(masterFD)
+            masterFD = -1
         }
     }
 }

@@ -16,7 +16,7 @@ struct ProjectDetailView: View {
 
             WispDivider(axis: .vertical)
 
-            TerminalPanel()
+            TerminalPanel(project: project)
                 .frame(minWidth: 480)
         }
         .background(Theme.bgWindow)
