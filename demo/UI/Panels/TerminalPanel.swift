@@ -23,6 +23,7 @@ struct TerminalPanel: View {
     @State private var sessionTitle: String = "shell"
     @State private var isRunningCommand = false
     @State private var pendingCommand: String?
+    @State private var currentCLIType: CLIType?
 
     private static let shellPath: String = {
         let uid = getuid()
@@ -127,16 +128,21 @@ struct TerminalPanel: View {
         pty.onExit = { [project] code in
             newSession.finish(exitCode: UInt32(code), runtimeMilliseconds: 0)
             if let todoID = pty.associatedTodoID {
+                var userInfo: [String: Any] = [
+                    NotificationKey.projectID: project.id,
+                    NotificationKey.todoID: todoID,
+                    NotificationKey.exitCode: code
+                ]
+                if let cliType = self.currentCLIType {
+                    userInfo[NotificationKey.cliType] = cliType.rawValue
+                }
                 NotificationCenter.default.post(
                     name: .cliCommandFinished,
                     object: nil,
-                    userInfo: [
-                        NotificationKey.projectID: project.id,
-                        NotificationKey.todoID: todoID,
-                        NotificationKey.exitCode: code
-                    ]
+                    userInfo: userInfo
                 )
             }
+            self.currentCLIType = nil
             DispatchQueue.main.async {
                 self.isRunningCommand = false
                 self.sessionTitle = project.name
@@ -190,6 +196,9 @@ struct TerminalPanel: View {
         }
         if let todoID = userInfo[NotificationKey.todoID] as? UUID {
             ptySession?.associatedTodoID = todoID
+        }
+        if let cliTypeRaw = userInfo[NotificationKey.cliType] as? String {
+            currentCLIType = CLIType(rawValue: cliTypeRaw)
         }
         isRunningCommand = true
 

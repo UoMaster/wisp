@@ -70,6 +70,11 @@ final class DataStore: ObservableObject {
         modifyTodos(for: projectID) { $0.removeAll { $0.id == id } }
     }
 
+    func replaceTodos(_ newList: [Todo], for projectID: UUID) {
+        todos[projectID] = newList
+        save()
+    }
+
     // MARK: - Persistence
 
     func load() {

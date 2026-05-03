@@ -112,15 +112,20 @@
 
 ### 🟢 体验优化项（MVP 可延后，但很快跟上）
 
-- [ ] **项目默认 CLI 设置**
-  - 每个项目可设置默认 CLI（当前模型有字段，UI 无入口）
+- [x] **项目默认 CLI 设置**
+  - 每个项目可设置默认 CLI（模型有字段，Todo 编辑面板可设置 preferredCLI）
 
-- [ ] **To-Do 编辑**
-  - 双击 TodoRow 弹出编辑器修改 title/prompt
+- [x] **To-Do 编辑**
+  - 双击 TodoRow 弹出编辑器修改 title/prompt/priority/tags/preferredCLI/notes
+  - 底部抽屉式编辑面板
 
-- [ ] **To-Do 删除与重排序**
-  - 右键菜单删除 / Delete 键
+- [x] **To-Do 删除与重排序**
+  - 右键菜单删除
   - 拖拽重排序
+
+- [x] **标签系统**
+  - 每个 Todo 可打标签
+  - Header 标签筛选栏
 
 - [ ] **沉浸式可折叠侧栏**
   - 快捷键 `⌘⇧F` 切换

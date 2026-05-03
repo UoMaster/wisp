@@ -35,6 +35,7 @@ struct StatusDot: View {
         case .pending:   return Theme.textTertiary
         case .running:   return Theme.statusRunning
         case .completed: return Theme.statusSuccess
+        case .failed:    return Theme.statusDanger
         }
     }
 
@@ -43,6 +44,7 @@ struct StatusDot: View {
         case .pending:   return Color.clear
         case .running:   return Theme.statusRunning
         case .completed: return Theme.statusSuccess
+        case .failed:    return Theme.statusDanger
         }
     }
 
@@ -51,6 +53,7 @@ struct StatusDot: View {
         case .pending:   return Theme.borderStrong
         case .running:   return Theme.statusRunning
         case .completed: return Theme.statusSuccess
+        case .failed:    return Theme.statusDanger
         }
     }
 }
