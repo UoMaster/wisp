@@ -1,7 +1,7 @@
 # Wisp 开发进度总览
 
 > 基于 `docs/product-design.md` 和当前代码库对齐后的完成状态。
-> 更新日期：2026-05-04
+> 更新日期：2026-05-05
 
 ---
 
@@ -45,13 +45,15 @@
 - [x] Header（标题 + 任务计数 badge + 添加按钮）
 - [x] **AddTodoSheet** (`UI/Panels/TodoPanel.swift`)：标题输入框 + Prompt 编辑器 + 取消/创建按钮
 - [x] TodoRow hover 态显示播放按钮
-- [x] 点击 TodoRow 触发 `runTodo()`（当前为占位实现）
+- [x] 点击 TodoRow 触发 `runTodo()`：CLI 选择浮层 → 临时文件 → TerminalPanel 执行
 
 ### 6. TerminalPanel
 - [x] **libghostty 集成** (`UI/Panels/TerminalPanel.swift`)：import GhosttyTerminal + TerminalSurfaceView
 - [x] Shell 生命周期管理（启动 / 销毁 / 标准输入输出管道绑定）
-- [x] Header（状态圆点 + 会话标题 + shell 名 + 分割/关闭占位按钮）
+- [x] Header（动态状态圆点 + 会话标题 + shell 名 + 分割/关闭占位按钮）
 - [x] InMemoryTerminalSession 接入（MVP 沙盒模式）
+- [x] 命令执行：接收 `runCLICommand` 通知，在 PTY 中执行 CLI 命令
+- [x] 进程退出通知：`cliCommandFinished` 通知 TodoPanel 更新状态
 
 ### 7. 添加项目流程
 - [x] NSOpenPanel 选择本地目录
@@ -124,9 +126,9 @@
   - 快捷键 `⌘⇧F` 切换
   - 鼠标移到左侧边缘临时浮出
 
-- [ ] **终端标题与 Todo 关联**
+- [x] **终端标题与 Todo 关联**
   - 通过 Todo 启动的终端，title 显示为 Todo 标题
-  - TerminalSession 绑定 todoID
+  - `associatedTodoID` 绑定到 PTYSession，进程退出后清理
 
 ---
 
