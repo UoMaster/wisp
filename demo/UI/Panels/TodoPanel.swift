@@ -6,10 +6,14 @@
 import SwiftUI
 
 struct TodoPanel: View {
+    @ObservedObject var store: DataStore
     let project: Project
 
-    @State private var todos: [Todo] = []
     @State private var showingAddSheet = false
+
+    private var todoList: [Todo] {
+        store.todos(for: project.id)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,7 +22,7 @@ struct TodoPanel: View {
         }
         .background(Theme.bgSurface)
         .sheet(isPresented: $showingAddSheet) {
-            AddTodoSheet(todos: $todos)
+            AddTodoSheet(store: store, projectID: project.id)
         }
     }
 
@@ -30,8 +34,8 @@ struct TodoPanel: View {
                 .font(WispFont.panelTitle)
                 .foregroundStyle(Theme.textPrimary)
 
-            if !todos.isEmpty {
-                Text("\(todos.count)")
+            if !todoList.isEmpty {
+                Text("\(todoList.count)")
                     .font(WispFont.monoSmall)
                     .foregroundStyle(Theme.textTertiary)
                     .padding(.horizontal, 6)
@@ -59,12 +63,12 @@ struct TodoPanel: View {
 
     @ViewBuilder
     private var content: some View {
-        if todos.isEmpty {
+        if todoList.isEmpty {
             emptyState
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Space.xs) {
-                    ForEach(todos) { todo in
+                    ForEach(todoList) { todo in
                         TodoRow(todo: todo) { runTodo(todo) }
                     }
                 }
@@ -160,7 +164,8 @@ private struct TodoRow: View {
 // MARK: - Add Sheet
 
 private struct AddTodoSheet: View {
-    @Binding var todos: [Todo]
+    @ObservedObject var store: DataStore
+    let projectID: UUID
     @Environment(\.dismiss) private var dismiss
 
     @State private var title: String = ""
@@ -222,7 +227,7 @@ private struct AddTodoSheet: View {
                     .keyboardShortcut(.cancelAction)
                 Button("创建") {
                     let todo = Todo(title: title, prompt: prompt)
-                    todos.append(todo)
+                    store.addTodo(todo, to: projectID)
                     dismiss()
                 }
                 .buttonStyle(.wispPrimary)

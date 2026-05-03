@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct ProjectSidebar: View {
-    @Binding var projects: [Project]
+    @ObservedObject var store: DataStore
     @Binding var selectedProjectID: UUID?
 
     var body: some View {
@@ -54,10 +54,10 @@ struct ProjectSidebar: View {
                     .padding(.top, Space.xs)
                     .padding(.bottom, Space.xs)
 
-                if projects.isEmpty {
+                if store.projects.isEmpty {
                     emptyHint
                 } else {
-                    ForEach(projects) { project in
+                    ForEach(store.projects) { project in
                         ProjectRow(
                             project: project,
                             isSelected: selectedProjectID == project.id
@@ -65,9 +65,9 @@ struct ProjectSidebar: View {
                         .onTapGesture { selectedProjectID = project.id }
                         .contextMenu {
                             Button("从列表移除", role: .destructive) {
-                                projects.removeAll { $0.id == project.id }
+                                store.removeProject(id: project.id)
                                 if selectedProjectID == project.id {
-                                    selectedProjectID = projects.first?.id
+                                    selectedProjectID = store.projects.first?.id
                                 }
                             }
                         }
@@ -119,7 +119,7 @@ struct ProjectSidebar: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             let newProject = Project(path: url.path)
-            projects.append(newProject)
+            store.addProject(newProject)
             selectedProjectID = newProject.id
         }
     }

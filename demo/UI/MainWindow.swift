@@ -6,13 +6,13 @@
 import SwiftUI
 
 struct MainWindow: View {
-    @State private var projects: [Project] = []
+    @StateObject private var store = DataStore()
     @State private var selectedProjectID: UUID?
 
     var body: some View {
         NavigationSplitView {
             ProjectSidebar(
-                projects: $projects,
+                store: store,
                 selectedProjectID: $selectedProjectID
             )
             .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 340)
@@ -32,8 +32,8 @@ struct MainWindow: View {
 
     @ViewBuilder
     private var detailContent: some View {
-        if let project = projects.first(where: { $0.id == selectedProjectID }) {
-            ProjectDetailView(project: project)
+        if let project = store.projects.first(where: { $0.id == selectedProjectID }) {
+            ProjectDetailView(store: store, project: project)
         } else {
             EmptyProjectState()
         }
