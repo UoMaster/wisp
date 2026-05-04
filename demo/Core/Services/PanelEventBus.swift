@@ -31,6 +31,9 @@ final class PanelEventBus {
 
         /// 请求弹出 Todo 编辑抽屉。todoID 为 nil 表示新建
         case presentTodoEditor(projectID: UUID, todoID: UUID?)
+
+        /// 切换 Todo 面板的显示/隐藏
+        case toggleTodoPanel
     }
 
     private let subject = PassthroughSubject<Event, Never>()

@@ -10,6 +10,7 @@ struct ProjectDetailView: View {
     let cliRunner: CLIRunner
     let bus: PanelEventBus
     let project: Project
+    @Binding var todoVisible: Bool
 
     var body: some View {
         HStack(spacing: 0) {
@@ -20,11 +21,21 @@ struct ProjectDetailView: View {
                 project: project
             )
             .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
+            .opacity(todoVisible ? 1 : 0)
+            .frame(width: todoVisible ? nil : 0, alignment: .leading)
+            .clipped()
 
             WispDivider(axis: .vertical)
+                .opacity(todoVisible ? 1 : 0)
+                .frame(width: todoVisible ? Stroke.hairline : 0)
 
-            TerminalPanel(project: project, bus: bus)
-                .frame(minWidth: 480)
+            TerminalPanel(
+                project: project,
+                bus: bus,
+                todoVisible: todoVisible,
+                onToggleTodo: { bus.send(.toggleTodoPanel) }
+            )
+            .frame(minWidth: 480)
         }
         .background(Theme.bgWindow)
     }

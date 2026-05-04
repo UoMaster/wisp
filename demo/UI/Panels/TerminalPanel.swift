@@ -11,6 +11,8 @@ import Darwin
 struct TerminalPanel: PanelKind {
     let project: Project
     let bus: PanelEventBus
+    let todoVisible: Bool
+    let onToggleTodo: () -> Void
 
     var panelID: UUID { project.id }
     var panelTitle: String { project.name }
@@ -41,7 +43,9 @@ struct TerminalPanel: PanelKind {
             TerminalPanelHeader(
                 title: sessionTitle,
                 shellName: Self.shellName,
-                isRunning: isRunningCommand
+                isRunning: isRunningCommand,
+                todoVisible: todoVisible,
+                onToggleTodo: onToggleTodo
             )
             terminalSurface
         }
@@ -68,8 +72,6 @@ struct TerminalPanel: PanelKind {
     private var terminalSurface: some View {
         TerminalSurfaceView(context: context)
             .background(Theme.terminalBg)
-            .padding(.horizontal, Space.sm)
-            .padding(.bottom, Space.sm)
     }
 
     // MARK: - Shell lifecycle

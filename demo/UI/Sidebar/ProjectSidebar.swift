@@ -10,6 +10,9 @@ struct ProjectSidebar: View {
     @ObservedObject var projectStore: ProjectStore
     let todoStore: TodoStore
     @Binding var selectedProjectID: UUID?
+    let onToggle: () -> Void
+
+    @State private var isHoveringCollapse = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,7 +21,13 @@ struct ProjectSidebar: View {
             footer
         }
         .background(Theme.bgSurface)
-        .toolbar(removing: .sidebarToggle)
+        .overlay(
+            Rectangle()
+                .fill(Theme.borderSubtle)
+                .frame(width: Stroke.hairline)
+                .frame(maxHeight: .infinity),
+            alignment: .trailing
+        )
     }
 
     // MARK: - Header
@@ -104,7 +113,22 @@ struct ProjectSidebar: View {
                     }
                 }
                 .buttonStyle(.wispGhost)
+
                 Spacer()
+
+                Button(action: onToggle) {
+                    Image(systemName: "sidebar.left")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(isHoveringCollapse ? Theme.textPrimary : Theme.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .background(isHoveringCollapse ? Theme.bgHover : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("折叠侧边栏")
+                .accessibilityLabel("折叠侧边栏")
+                .trackHover($isHoveringCollapse)
             }
             .padding(Space.md)
         }

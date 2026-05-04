@@ -43,7 +43,7 @@ struct TodoPanel: PanelKind {
             }
             content
         }
-        .background(Theme.bgSurface)
+        .background(Theme.bgWindow)
         .confirmationDialog(
             "选择 CLI 工具",
             isPresented: $showingCLIChooser,
