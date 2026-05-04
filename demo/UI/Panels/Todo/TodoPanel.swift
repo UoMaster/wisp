@@ -17,6 +17,14 @@ struct TodoPanel: PanelKind {
     @State private var selectedTodoForRun: Todo?
     @State private var showingCLIChooser = false
     @State private var selectedTag: String? = nil
+    @State private var pendingPlacement: RunPlacement = .focusedPanel
+
+    private enum RunPlacement {
+        case focusedPanel
+        case newTab
+        case splitHorizontal
+        case splitVertical
+    }
 
     private var todoList: [Todo] {
         let base = todoStore.todos(for: project.id)
@@ -52,7 +60,7 @@ struct TodoPanel: PanelKind {
             ForEach(CLIType.allCases) { cliType in
                 Button(cliType.displayName) {
                     if let todo = selectedTodoForRun {
-                        cliRunner.run(todo: todo, cliType: cliType, in: project.id)
+                        executeRun(todo: todo, cliType: cliType)
                     }
                     selectedTodoForRun = nil
                 }
@@ -161,12 +169,37 @@ struct TodoPanel: PanelKind {
 
     private func runTodo(_ todo: Todo) {
         guard todo.status != .running else { return }
+
+        let flags = NSEvent.modifierFlags
+        if flags.contains(.command) {
+            pendingPlacement = .newTab
+        } else if flags.contains(.option) {
+            pendingPlacement = .splitHorizontal
+        } else if flags.contains(.control) {
+            pendingPlacement = .splitVertical
+        } else {
+            pendingPlacement = .focusedPanel
+        }
+
         if let preferred = todo.preferredCLI {
-            cliRunner.run(todo: todo, cliType: preferred, in: project.id)
+            executeRun(todo: todo, cliType: preferred)
             return
         }
         selectedTodoForRun = todo
         showingCLIChooser = true
+    }
+
+    private func executeRun(todo: Todo, cliType: CLIType) {
+        let preEvent: PanelEventBus.Event? = switch pendingPlacement {
+        case .focusedPanel: nil
+        case .newTab: .newTab(projectID: project.id)
+        case .splitHorizontal: .splitCurrentTab(projectID: project.id, direction: .horizontal)
+        case .splitVertical: .splitCurrentTab(projectID: project.id, direction: .vertical)
+        }
+        if let event = preEvent {
+            bus.send(event)
+        }
+        cliRunner.run(todo: todo, cliType: cliType, in: project.id, targetPanelID: nil)
     }
 
     private func duplicateTodo(_ todo: Todo) {

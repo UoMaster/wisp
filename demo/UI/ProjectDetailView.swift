@@ -29,7 +29,7 @@ struct ProjectDetailView: View {
                 .opacity(todoVisible ? 1 : 0)
                 .frame(width: todoVisible ? Stroke.hairline : 0)
 
-            TerminalPanel(
+            TerminalWorkspace(
                 project: project,
                 bus: bus,
                 todoVisible: todoVisible,

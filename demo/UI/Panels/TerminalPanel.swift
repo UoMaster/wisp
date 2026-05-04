@@ -9,12 +9,11 @@ import GhosttyTerminal
 import Darwin
 
 struct TerminalPanel: PanelKind {
+    let panelID: UUID
     let project: Project
     let bus: PanelEventBus
-    let todoVisible: Bool
-    let onToggleTodo: () -> Void
+    let isFocused: Bool
 
-    var panelID: UUID { project.id }
     var panelTitle: String { project.name }
 
     @State private var context = TerminalViewState(
@@ -30,6 +29,7 @@ struct TerminalPanel: PanelKind {
     @State private var isRunningCommand = false
     @State private var pendingCommand: String?
     @State private var currentCLIType: CLIType?
+    @State private var didInitialize = false
 
     private static let shellPath: String = {
         let uid = getuid()
@@ -43,26 +43,62 @@ struct TerminalPanel: PanelKind {
             TerminalPanelHeader(
                 title: sessionTitle,
                 shellName: Self.shellName,
-                isRunning: isRunningCommand,
-                todoVisible: todoVisible,
-                onToggleTodo: onToggleTodo
+                isRunning: isRunningCommand
             )
             terminalSurface
         }
         .background(Theme.bgWindow)
+        .overlay(
+            Rectangle()
+                .fill(isFocused ? Theme.accent.opacity(0.5) : Color.clear)
+                .frame(height: 1)
+            , alignment: .top
+        )
+        .overlay(
+            Rectangle()
+                .fill(Color.black.opacity(isFocused ? 0 : 0.06))
+                .allowsHitTesting(false)
+        )
         .onAppear {
+            guard !didInitialize else { return }
+            didInitialize = true
+
+            bus.send(.focusPanel(projectID: project.id, panelID: panelID))
             startShell()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                focusTerminalView()
+
+            if isFocused {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    focusTerminalView()
+                }
             }
         }
-        .onDisappear {
-            ptySession?.terminate()
-            ptySession = nil
+        .onChange(of: isFocused) { newValue in
+            if newValue {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    focusTerminalView()
+                }
+            }
+        }
+        .onTapGesture {
+            bus.send(.focusPanel(projectID: project.id, panelID: panelID))
         }
         .onReceive(bus.events) { event in
-            guard case let .runCLI(projectID, todoID, cliType, title, command, promptInput) = event,
+            if case let .panelWillClose(pid, pid2) = event,
+               pid == project.id, pid2 == panelID {
+                ptySession?.terminate()
+                ptySession = nil
+                return
+            }
+
+            guard case let .runCLI(projectID, todoID, cliType, title, command, promptInput, targetPanelID) = event,
                   projectID == project.id else { return }
+
+            if let target = targetPanelID {
+                guard target == panelID else { return }
+            } else {
+                guard isFocused else { return }
+            }
+
             executeCommand(todoID: todoID, cliType: cliType, title: title, command: command, promptInput: promptInput)
         }
     }
@@ -77,6 +113,7 @@ struct TerminalPanel: PanelKind {
     // MARK: - Shell lifecycle
 
     private func startShell() {
+        guard ptySession == nil else { return }
         let pty = PTYSession()
         self.ptySession = pty
 
@@ -133,18 +170,20 @@ struct TerminalPanel: PanelKind {
     }
 
     private func focusTerminalView() {
+        guard isFocused else { return }
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow,
               let contentView = window.contentView else { return }
 
-        func findTerminalView(in view: NSView) -> NSView? {
+        func findVisibleTerminalView(in view: NSView) -> NSView? {
+            if view.alphaValue < 0.01 { return nil }
             if view is AppTerminalView { return view }
             for subview in view.subviews {
-                if let found = findTerminalView(in: subview) { return found }
+                if let found = findVisibleTerminalView(in: subview) { return found }
             }
             return nil
         }
 
-        if let terminalView = findTerminalView(in: contentView) {
+        if let terminalView = findVisibleTerminalView(in: contentView) {
             window.makeFirstResponder(terminalView)
         }
     }

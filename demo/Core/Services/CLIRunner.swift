@@ -23,7 +23,7 @@ final class CLIRunner {
     }
 
     /// 启动一个 Todo —— 写临时文件、构造命令、通过 EventBus 通知 TerminalPanel 执行
-    func run(todo: Todo, cliType: CLIType, in projectID: UUID) {
+    func run(todo: Todo, cliType: CLIType, in projectID: UUID, targetPanelID: UUID? = nil) {
         guard let payload = buildPayload(for: todo, cliType: cliType) else { return }
 
         todoStore.markRunning(todoID: todo.id, in: projectID)
@@ -34,7 +34,8 @@ final class CLIRunner {
             cliType: cliType,
             title: todo.title,
             command: payload.command,
-            promptInput: payload.promptInput
+            promptInput: payload.promptInput,
+            targetPanelID: targetPanelID
         ))
     }
 

@@ -83,13 +83,13 @@ struct MainWindow: View {
                 }
             }
 
-            // MARK: - 快捷键
-            Button(action: toggleSidebar) {
-                EmptyView()
-            }
-            .keyboardShortcut("f", modifiers: [.command, .shift])
-            .opacity(0)
-            .frame(width: 0, height: 0)
+            hiddenShortcut(action: toggleSidebar, key: "f", modifiers: [.command, .shift])
+            hiddenShortcut(action: {
+                if let pid = selectedProjectID { bus.send(.newTab(projectID: pid)) }
+            }, key: "t", modifiers: .command)
+            hiddenShortcut(action: {
+                if let pid = selectedProjectID { bus.send(.closeFocusedPanel(projectID: pid)) }
+            }, key: "w", modifiers: .command)
 
             // MARK: - Editor 浮层
             if editorPresented, let projectID = editorProjectID {
@@ -110,7 +110,7 @@ struct MainWindow: View {
                 withAnimation(.easeInOut(duration: Motion.base)) {
                     todoVisible.toggle()
                 }
-            case .runCLI, .cliFinished:
+            case .runCLI, .cliFinished, .newTab, .splitCurrentTab, .closeCurrentTab, .closeFocusedPanel, .panelWillClose, .selectTab, .focusPanel:
                 break
             }
         }
@@ -118,6 +118,13 @@ struct MainWindow: View {
 
     private func toggleSidebar() {
         sidebarVisible.toggle()
+    }
+
+    private func hiddenShortcut(action: @escaping () -> Void, key: KeyEquivalent, modifiers: EventModifiers) -> some View {
+        Button(action: action) { EmptyView() }
+            .keyboardShortcut(key, modifiers: modifiers)
+            .opacity(0)
+            .frame(width: 0, height: 0)
     }
 
     @ViewBuilder
