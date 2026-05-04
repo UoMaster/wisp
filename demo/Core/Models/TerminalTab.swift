@@ -12,4 +12,7 @@ struct TerminalTab: Identifiable {
     var title: String
     var root: LayoutNode
     var focusedPanelID: UUID?
+
+    /// 当前放大（zoom）的 panel ID，nil 表示未放大
+    var zoomedPanelID: UUID?
 }

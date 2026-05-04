@@ -15,6 +15,7 @@ struct TerminalWorkspace: View {
 
     @State private var tabs: [TerminalTab] = []
     @State private var selectedTabID: UUID? = nil
+    @State private var editingTabID: UUID? = nil
 
     private var selectedTabIndex: Int? {
         tabs.firstIndex(where: { $0.id == selectedTabID })
@@ -101,16 +102,35 @@ struct TerminalWorkspace: View {
 
     private func tabButton(for tab: TerminalTab) -> some View {
         let isSelected = tab.id == selectedTabID
+        let isEditing = editingTabID == tab.id
+        let editingBinding = Binding<Bool>(
+            get: { editingTabID == tab.id },
+            set: { if !$0 { editingTabID = nil } }
+        )
         return Button(action: {
-            selectedTabID = tab.id
+            if !isEditing {
+                selectedTabID = tab.id
+            }
         }) {
             HStack(spacing: Space.xs) {
-                Text(tab.title)
-                    .font(WispFont.caption)
-                    .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
-                    .lineLimit(1)
+                if isEditing {
+                    InlineRenameField(
+                        initialText: tab.title,
+                        isEditing: editingBinding,
+                        font: WispFont.caption,
+                        width: 80,
+                        onCommit: { newTitle in
+                            renameTab(id: tab.id, title: newTitle)
+                        }
+                    )
+                } else {
+                    Text(tab.title)
+                        .font(WispFont.caption)
+                        .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
+                        .lineLimit(1)
+                }
 
-                if tabs.count > 1 {
+                if tabs.count > 1, !isEditing {
                     Button(action: {
                         closeTab(id: tab.id)
                     }) {
@@ -131,6 +151,22 @@ struct TerminalWorkspace: View {
             )
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button("重命名") {
+                editingTabID = tab.id
+            }
+            if tabs.count > 1 {
+                Button("关闭") {
+                    closeTab(id: tab.id)
+                }
+            }
+        }
+    }
+
+    private func renameTab(id: UUID, title: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        guard tabs[index].title != title else { return }
+        tabs[index].title = title
     }
 
     // MARK: - Content Area
@@ -143,7 +179,8 @@ struct TerminalWorkspace: View {
                     project: project,
                     bus: bus,
                     root: tab.root,
-                    focusedPanelID: tab.focusedPanelID
+                    focusedPanelID: tab.focusedPanelID,
+                    zoomedPanelID: tab.zoomedPanelID
                 )
                 .opacity(tab.id == selectedTabID ? 1 : 0)
                 .allowsHitTesting(tab.id == selectedTabID)
@@ -203,6 +240,14 @@ struct TerminalWorkspace: View {
         }
     }
 
+    private func cycleTab(step: Int) {
+        guard tabs.count > 1, let currentIndex = selectedTabIndex else { return }
+        let nextIndex = (currentIndex + step + tabs.count) % tabs.count
+        let newID = tabs[nextIndex].id
+        guard selectedTabID != newID else { return }
+        selectedTabID = newID
+    }
+
     // MARK: - Panel Lifecycle (nested split)
 
     private func splitHorizontal() {
@@ -232,31 +277,39 @@ struct TerminalWorkspace: View {
     }
 
     private func closeFocusedPanel() {
-        guard let index = selectedTabIndex else { return }
+        guard let index = selectedTabIndex,
+              let focusedID = tabs[index].focusedPanelID else { return }
+        closePanel(at: index, panelID: focusedID)
+    }
 
-        // 如果只有一个 panel
-        if case .panel = tabs[index].root {
+    private func closePanel(panelID: UUID) {
+        guard let tabIndex = tabs.firstIndex(where: { $0.root.contains(panelID: panelID) }) else { return }
+        closePanel(at: tabIndex, panelID: panelID)
+    }
+
+    private func closePanel(at tabIndex: Int, panelID: UUID) {
+        if case .panel = tabs[tabIndex].root {
             if tabs.count == 1 {
-                // 只有一个 tab，重置 panel
-                if let oldID = tabs[index].root.firstPanelID {
+                if let oldID = tabs[tabIndex].root.firstPanelID {
                     bus.send(.panelWillClose(projectID: project.id, panelID: oldID))
                 }
                 let panel = PanelInstance(id: UUID(), title: project.name, associatedTodoID: nil)
-                tabs[index].root = .panel(panel)
-                tabs[index].focusedPanelID = panel.id
+                tabs[tabIndex].root = .panel(panel)
+                tabs[tabIndex].focusedPanelID = panel.id
             } else {
-                // 多个 tab，关闭当前 tab
-                closeTab(id: tabs[index].id)
+                closeTab(id: tabs[tabIndex].id)
             }
             return
         }
 
-        guard let focusedID = tabs[index].focusedPanelID,
-              let path = tabs[index].root.path(to: focusedID) else { return }
+        guard let path = tabs[tabIndex].root.path(to: panelID) else { return }
 
-        bus.send(.panelWillClose(projectID: project.id, panelID: focusedID))
-        tabs[index].root = tabs[index].root.removingPanel(at: path)
-        tabs[index].focusedPanelID = tabs[index].root.firstPanelID
+        bus.send(.panelWillClose(projectID: project.id, panelID: panelID))
+        tabs[tabIndex].root = tabs[tabIndex].root.removingPanel(at: path)
+
+        if tabs[tabIndex].focusedPanelID == panelID {
+            tabs[tabIndex].focusedPanelID = tabs[tabIndex].root.firstPanelID
+        }
     }
 
     // MARK: - Event Handling
@@ -279,14 +332,20 @@ struct TerminalWorkspace: View {
             guard pid == project.id else { return }
             closeFocusedPanel()
 
+        case let .closePanel(pid, panelID):
+            guard pid == project.id else { return }
+            closePanel(panelID: panelID)
+
         case let .selectTab(pid, tabID):
             guard pid == project.id else { return }
+            guard selectedTabID != tabID else { return }
             selectedTabID = tabID
 
         case let .focusPanel(pid, panelID):
             guard pid == project.id else { return }
             if let index = selectedTabIndex,
-               tabs[index].root.contains(panelID: panelID) {
+               tabs[index].root.contains(panelID: panelID),
+               tabs[index].focusedPanelID != panelID {
                 tabs[index].focusedPanelID = panelID
             }
 
@@ -295,7 +354,6 @@ struct TerminalWorkspace: View {
             if targetPanelID != nil {
                 break
             }
-            // 无目标时，确保当前 tab 有 focused panel
             if let index = selectedTabIndex {
                 if tabs[index].root.firstPanelID == nil {
                     let panel = PanelInstance(id: UUID(), title: project.name, associatedTodoID: nil)
@@ -306,6 +364,36 @@ struct TerminalWorkspace: View {
                     tabs[index].focusedPanelID = tabs[index].root.firstPanelID
                 }
             }
+
+        case let .focusNeighbor(pid, direction):
+            guard pid == project.id else { return }
+            guard let index = selectedTabIndex,
+                  let focusedID = tabs[index].focusedPanelID else { return }
+            if let neighborID = tabs[index].root.neighborPanelID(from: focusedID, direction: direction) {
+                bus.send(.focusPanel(projectID: project.id, panelID: neighborID))
+            }
+
+        case let .nextTab(pid):
+            guard pid == project.id else { return }
+            cycleTab(step: 1)
+
+        case let .previousTab(pid):
+            guard pid == project.id else { return }
+            cycleTab(step: -1)
+
+        case let .selectTabByIndex(pid, index):
+            guard pid == project.id else { return }
+            let zeroBased = index - 1
+            guard tabs.indices.contains(zeroBased) else { return }
+            let newID = tabs[zeroBased].id
+            guard selectedTabID != newID else { return }
+            selectedTabID = newID
+
+        case let .toggleZoom(pid):
+            guard pid == project.id else { return }
+            guard let index = selectedTabIndex,
+                  let focusedID = tabs[index].focusedPanelID else { return }
+            tabs[index].zoomedPanelID = (tabs[index].zoomedPanelID == focusedID) ? nil : focusedID
 
         default:
             break

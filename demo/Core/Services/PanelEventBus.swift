@@ -49,6 +49,9 @@ final class PanelEventBus {
         /// 关闭当前 focused 的 panel（Command+W）
         case closeFocusedPanel(projectID: UUID)
 
+        /// 关闭指定 panel
+        case closePanel(projectID: UUID, panelID: UUID)
+
         /// 切换标签页
         case selectTab(projectID: UUID, tabID: UUID)
 
@@ -57,6 +60,19 @@ final class PanelEventBus {
 
         /// Panel 即将被关闭（真正销毁，不是 SwiftUI 重建）
         case panelWillClose(projectID: UUID, panelID: UUID)
+
+        /// 聚焦当前标签页内指定方向的相邻 panel
+        case focusNeighbor(projectID: UUID, direction: NavigationDirection)
+
+        /// 切换到下一个/上一个标签页
+        case nextTab(projectID: UUID)
+        case previousTab(projectID: UUID)
+
+        /// 选择指定索引的标签页（1-based）
+        case selectTabByIndex(projectID: UUID, index: Int)
+
+        /// 切换当前 focused panel 的放大状态
+        case toggleZoom(projectID: UUID)
     }
 
     private let subject = PassthroughSubject<Event, Never>()

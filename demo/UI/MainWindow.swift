@@ -91,6 +91,43 @@ struct MainWindow: View {
                 if let pid = selectedProjectID { bus.send(.closeFocusedPanel(projectID: pid)) }
             }, key: "w", modifiers: .command)
 
+            hiddenShortcut(action: {
+                if let pid = selectedProjectID { bus.send(.splitCurrentTab(projectID: pid, direction: .horizontal)) }
+            }, key: "d", modifiers: .command)
+            hiddenShortcut(action: {
+                if let pid = selectedProjectID { bus.send(.splitCurrentTab(projectID: pid, direction: .vertical)) }
+            }, key: "d", modifiers: [.command, .shift])
+
+            hiddenShortcut(action: {
+                if let pid = selectedProjectID { bus.send(.focusNeighbor(projectID: pid, direction: .left)) }
+            }, key: .leftArrow, modifiers: [.command, .option])
+            hiddenShortcut(action: {
+                if let pid = selectedProjectID { bus.send(.focusNeighbor(projectID: pid, direction: .right)) }
+            }, key: .rightArrow, modifiers: [.command, .option])
+            hiddenShortcut(action: {
+                if let pid = selectedProjectID { bus.send(.focusNeighbor(projectID: pid, direction: .up)) }
+            }, key: .upArrow, modifiers: [.command, .option])
+            hiddenShortcut(action: {
+                if let pid = selectedProjectID { bus.send(.focusNeighbor(projectID: pid, direction: .down)) }
+            }, key: .downArrow, modifiers: [.command, .option])
+
+            hiddenShortcut(action: {
+                if let pid = selectedProjectID { bus.send(.nextTab(projectID: pid)) }
+            }, key: "]", modifiers: [.command, .shift])
+            hiddenShortcut(action: {
+                if let pid = selectedProjectID { bus.send(.previousTab(projectID: pid)) }
+            }, key: "[", modifiers: [.command, .shift])
+
+            ForEach(1..<10) { i in
+                hiddenShortcut(action: {
+                    if let pid = selectedProjectID { bus.send(.selectTabByIndex(projectID: pid, index: i)) }
+                }, key: digitKey(i), modifiers: .control)
+            }
+
+            hiddenShortcut(action: {
+                if let pid = selectedProjectID { bus.send(.toggleZoom(projectID: pid)) }
+            }, key: .return, modifiers: [.command, .shift])
+
             // MARK: - Editor 浮层
             if editorPresented, let projectID = editorProjectID {
                 editorOverlay(projectID: projectID)
@@ -110,7 +147,7 @@ struct MainWindow: View {
                 withAnimation(.easeInOut(duration: Motion.base)) {
                     todoVisible.toggle()
                 }
-            case .runCLI, .cliFinished, .newTab, .splitCurrentTab, .closeCurrentTab, .closeFocusedPanel, .panelWillClose, .selectTab, .focusPanel:
+            default:
                 break
             }
         }
@@ -118,6 +155,10 @@ struct MainWindow: View {
 
     private func toggleSidebar() {
         sidebarVisible.toggle()
+    }
+
+    private func digitKey(_ digit: Int) -> KeyEquivalent {
+        KeyEquivalent(Character("\(digit)"))
     }
 
     private func hiddenShortcut(action: @escaping () -> Void, key: KeyEquivalent, modifiers: EventModifiers) -> some View {

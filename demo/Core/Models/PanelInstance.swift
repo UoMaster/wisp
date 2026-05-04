@@ -121,4 +121,42 @@ indirect enum LayoutNode: Identifiable {
             return children.flatMap { $0.allPanelIDs }
         }
     }
+
+    /// 获取树中最后一个 panel 的 ID
+    var lastPanelID: UUID? {
+        switch self {
+        case .panel(let p): return p.id
+        case .split(_, _, let children):
+            return children.last?.lastPanelID
+        }
+    }
+
+    /// 根据方向查找相邻 panel 的 ID
+    func neighborPanelID(from panelID: UUID, direction: NavigationDirection) -> UUID? {
+        guard let path = self.path(to: panelID), !path.isEmpty else { return nil }
+        let targetDirection: SplitDirection = (direction == .left || direction == .right) ? .horizontal : .vertical
+        let step = (direction == .right || direction == .down) ? 1 : -1
+
+        var currentNode = self
+        for index in path {
+            guard case .split(_, let nodeDirection, let children) = currentNode else { break }
+
+            if nodeDirection == targetDirection {
+                let neighborIndex = index + step
+                if children.indices.contains(neighborIndex) {
+                    let neighbor = children[neighborIndex]
+                    return step > 0 ? neighbor.firstPanelID : neighbor.lastPanelID
+                }
+            }
+
+            guard children.indices.contains(index) else { break }
+            currentNode = children[index]
+        }
+
+        return nil
+    }
+}
+
+enum NavigationDirection {
+    case left, right, up, down
 }

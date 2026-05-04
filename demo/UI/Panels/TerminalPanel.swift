@@ -43,7 +43,13 @@ struct TerminalPanel: PanelKind {
             TerminalPanelHeader(
                 title: sessionTitle,
                 shellName: Self.shellName,
-                isRunning: isRunningCommand
+                isRunning: isRunningCommand,
+                onRename: { newTitle in
+                    sessionTitle = newTitle
+                },
+                onClose: {
+                    bus.send(.closePanel(projectID: project.id, panelID: panelID))
+                }
             )
             terminalSurface
         }
@@ -155,8 +161,7 @@ struct TerminalPanel: PanelKind {
         let started = pty.start(
             command: Self.shellPath,
             arguments: ["-i", "-l"],
-            cwd: project.url,
-            postLaunchCommand: "cd '\(project.path)'"
+            cwd: project.url
         )
 
         sessionTitle = started ? project.name : "failed"

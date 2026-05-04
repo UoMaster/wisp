@@ -71,7 +71,12 @@ struct ProjectSidebar: View {
                     ForEach(projectStore.projects) { project in
                         ProjectRow(
                             project: project,
-                            isSelected: selectedProjectID == project.id
+                            isSelected: selectedProjectID == project.id,
+                            onRename: { newName in
+                                var updated = project
+                                updated.name = newName
+                                projectStore.update(updated)
+                            }
                         )
                         .onTapGesture { selectedProjectID = project.id }
                         .contextMenu {

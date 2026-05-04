@@ -13,11 +13,16 @@ struct TerminalArea: View {
     let bus: PanelEventBus
     let root: LayoutNode
     let focusedPanelID: UUID?
+    let zoomedPanelID: UUID?
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
                 ForEach(panels, id: \.panelID) { layout in
+                    let isZoomed = zoomedPanelID == layout.panelID
+                    let isVisible = zoomedPanelID == nil || isZoomed
+                    let frame = isZoomed ? unitRect : layout.frame
+
                     TerminalPanel(
                         panelID: layout.panelID,
                         project: project,
@@ -25,17 +30,20 @@ struct TerminalArea: View {
                         isFocused: focusedPanelID == layout.panelID
                     )
                     .frame(
-                        width: layout.frame.width * geometry.size.width,
-                        height: layout.frame.height * geometry.size.height
+                        width: frame.width * geometry.size.width,
+                        height: frame.height * geometry.size.height
                     )
                     .position(
-                        x: (layout.frame.minX + layout.frame.width / 2) * geometry.size.width,
-                        y: (layout.frame.minY + layout.frame.height / 2) * geometry.size.height
+                        x: (frame.minX + frame.width / 2) * geometry.size.width,
+                        y: (frame.minY + frame.height / 2) * geometry.size.height
                     )
+                    .opacity(isVisible ? 1 : 0)
+                    .allowsHitTesting(isVisible)
                 }
 
                 ForEach(dividers, id: \.id) { divider in
                     dividerView(divider, in: geometry.size)
+                        .opacity(zoomedPanelID == nil ? 1 : 0)
                 }
             }
         }

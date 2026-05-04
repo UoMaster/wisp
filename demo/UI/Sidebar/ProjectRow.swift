@@ -8,7 +8,10 @@ import SwiftUI
 struct ProjectRow: View {
     let project: Project
     let isSelected: Bool
+    let onRename: ((String) -> Void)?
+
     @State private var isHovered = false
+    @State private var isEditing = false
 
     var body: some View {
         HStack(spacing: Space.sm) {
@@ -18,10 +21,19 @@ struct ProjectRow: View {
                 .frame(width: 16)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(project.name)
-                    .font(WispFont.bodyMedium)
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1)
+                if isEditing {
+                    InlineRenameField(
+                        initialText: project.name,
+                        isEditing: $isEditing,
+                        font: WispFont.bodyMedium,
+                        onCommit: { onRename?($0) }
+                    )
+                } else {
+                    Text(project.name)
+                        .font(WispFont.bodyMedium)
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                }
 
                 Text(project.displayPath)
                     .font(WispFont.monoSmall)
@@ -38,5 +50,12 @@ struct ProjectRow: View {
         .wispRowBackground(isSelected: isSelected, isHovered: isHovered)
         .contentShape(Rectangle())
         .trackHover($isHovered)
+        .contextMenu {
+            if onRename != nil {
+                Button("重命名") {
+                    isEditing = true
+                }
+            }
+        }
     }
 }
